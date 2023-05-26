@@ -1,0 +1,9 @@
+{
+  "nrf-connect.topdir": "c:\\Users\\micha_o8lgp\\ncs",
+  "nrf-connect.toolchain.path": "PATH",
+  "files.associations": {
+    "wifi_mgmt.h": "c",
+    "net_if.h": "c",
+    "net_event.h": "c"
+  }
+}
