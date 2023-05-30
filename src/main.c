@@ -32,6 +32,8 @@ LOG_MODULE_REGISTER(scan, CONFIG_LOG_DEFAULT_LEVEL);
 #define WIFI_SHELL_MGMT_EVENTS (NET_EVENT_WIFI_SCAN_DONE |		\
 								NET_EVENT_WIFI_RAW_SCAN_RESULT)
 
+#define NRF_LOG_DEFERRED 0
+
 static uint32_t scan_finished;
 
 static struct net_mgmt_event_callback wifi_shell_mgmt_cb;
@@ -88,16 +90,16 @@ static void handle_wifi_raw_scan_result(struct net_mgmt_event_callback *cb)
 	band = wifi_freq_to_band(raw->frequency);
 
 	// RSSI FILTER FOR TESTING (-30 should be detect the 2 devices if they are right next to each other, and not detect anything else)
-	if (rssi > -30) {
+	if (rssi > -128) {
 		LOG_INF("%-4u (%-6s) | %-4d | %s |      %-4d        ",
 			channel,
 			wifi_band_txt(band),
 			rssi,
 			net_sprint_ll_addr_buf(raw->data + 10, WIFI_MAC_ADDR_LEN, mac_string_buf, sizeof(mac_string_buf)), raw->frame_length);
 
-		k_sleep(K_SECONDS(0.01));
-		LOG_HEXDUMP_INF(raw->data, sizeof(raw->data), "Frame Body: ");
-		printk("\n\n");
+		// k_sleep(K_SECONDS(0.01));
+		// LOG_HEXDUMP_INF(raw->data, sizeof(raw->data) - 128, "");  // Purposely printing less data to avoid messages dropped
+		// printk("\n\n");
 	}
 
 	
@@ -112,7 +114,7 @@ static void handle_wifi_scan_done(struct net_mgmt_event_callback *cb)
 		LOG_ERR("Scan request failed (%d)", status->status);
 	} else {
 		scan_finished = 1;  // set global variable to indicate scanning is not longer in progress
-		LOG_INF("Scan request done");
+		// LOG_INF("Scan request done");
 	}
 }
 
@@ -121,10 +123,10 @@ static void wifi_mgmt_event_handler(struct net_mgmt_event_callback *cb,
 {
 	switch (mgmt_event) {
 	case NET_EVENT_WIFI_RAW_SCAN_RESULT:
-		handle_wifi_raw_scan_result(cb);
+		handle_wifi_raw_scan_result(cb);  // this func call is basically instantaneous
 		break;
 	case NET_EVENT_WIFI_SCAN_DONE:
-		handle_wifi_scan_done(cb);
+		handle_wifi_scan_done(cb);  // this func call is basically instantaneous
 		break;
 	default:
 		break;
@@ -134,7 +136,7 @@ static void wifi_mgmt_event_handler(struct net_mgmt_event_callback *cb,
 static int wifi_scan(void)
 {
 	scan_finished = 0;  // set global variable to indicate scanning currently in progresss
-
+	
 	struct net_if *iface = net_if_get_default();
 
 	if (net_mgmt(NET_REQUEST_WIFI_SCAN, iface, NULL, 0)) {
@@ -168,7 +170,7 @@ int main(void)
 	scan_finished = 1;
 
 	while(1) {
-		if (scan_finished == 1) {  // only perform a scan if not anothr scan is currently in progress
+		if (scan_finished == 1) {  // only perform a scan if not another scan is currently in progress
 			wifi_scan();
 		}
 		k_sleep(K_SECONDS(0.01));
@@ -176,21 +178,5 @@ int main(void)
 
 	LOG_INF("EXITED LOOP");
 	
-
-
-	// int MAX_NUM_SCANS = 10;
-	// int count = 0;
-	// while(1) {
-	// 	k_sleep(K_SECONDS(1));
-	// 	// LOG_INF("Starting %s with CPU frequency: %d MHz", CONFIG_BOARD, SystemCoreClock / MHZ(1));  // should be nrf7002dk_nrf5340_cpuapp with 128 MHz
-
-	// 	wifi_scan();
-	// 	count += 1;
-
-	// 	if (count > MAX_NUM_SCANS) {
-	// 		break;
-	// 	}
-	// }
-
 	return 0;
 }
