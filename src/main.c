@@ -34,9 +34,66 @@ LOG_MODULE_REGISTER(scan, CONFIG_LOG_DEFAULT_LEVEL);
 
 #define NRF_LOG_DEFERRED 0
 
+// decimal of FA 0B BC 0D
+static uint8_t identifier[] = {250, 11, 188, 13};
+
 static uint32_t scan_finished;
 
 static struct net_mgmt_event_callback wifi_shell_mgmt_cb;
+
+static void log_hexdump(uint8_t* hex_buf, uint16_t size) {
+	/*
+	 print the buffer (which should be a scanned wifi packet) as a string of hex chars.
+	 */
+	for (int i=0; i<size; i++) {
+		if (hex_buf[i] < 16) {  // because printing "%x ", for single digit characters omits the first 0
+			printk("0");
+		}
+		printk("%X ", hex_buf[i]);
+		k_sleep(K_SECONDS(0.001));  // delay between each character so messages aren't dropped
+	}
+	printk("\n");
+}
+
+static int contains(uint8_t big[], int size_b, uint8_t small[], int size_s) {
+	/*
+	 Checks if a small array is a sub-array of a big array. Returns -1 if it's not,
+	 Returns the index of the small array in the big array if it is.
+	 */
+    int contains, k;
+    for(int i = 0; i < size_b; i++){
+        // assume that the big array contains the small array
+        contains = 1;
+        // check if the element at index i in the big array is the same as the first element in the small array
+       if(big[i] == small[0]){
+           // if yes, then we start from k = 1, because we already know that the first element in the small array is the same as the element at index i in the big array
+           k = 1;
+           // we start to check if the next elements in the big array are the same as the elements in the small array
+           // (we start from i+1 position because we already know that the element at the position i is the same as the first element in the small array)
+           for(int j = i + 1; j < size_b; j++){
+               // range for k must be from 1 to size_s-1
+               if(k >= size_s - 1) {
+                   break;
+               }
+               // if the element at the position j in the big array is different
+               // from the element at the position k in the small array then we
+               // flag that we did not find the sequence we were looking for (contains=0)
+               if(big[j] != small[k]){
+                   contains = 0;
+                   break;
+               }
+               // increment k because we want the next element in the small array
+               k++;
+           }
+           // if contains flag is not 0 that means we found the sequence we were looking
+           // for and that sequence starts from index i in the big array
+           if(contains) {
+               return i;
+           }
+       }
+    }
+    return -1;  // if the sequence we were looking for was not found
+}
 
 static int wifi_freq_to_channel(int frequency)
 {
@@ -89,20 +146,35 @@ static void handle_wifi_raw_scan_result(struct net_mgmt_event_callback *cb)
 	channel = wifi_freq_to_channel(raw->frequency);
 	band = wifi_freq_to_band(raw->frequency);
 
-	// RSSI FILTER FOR TESTING (-30 should be detect the 2 devices if they are right next to each other, and not detect anything else)
-	if (rssi > -128) {
+	int odid_identifier_idx = contains(raw->data, sizeof(raw->data), identifier, sizeof(identifier));
+
+	if (odid_identifier_idx != -1) {
 		LOG_INF("%-4u (%-6s) | %-4d | %s |      %-4d        ",
 			channel,
 			wifi_band_txt(band),
 			rssi,
 			net_sprint_ll_addr_buf(raw->data + 10, WIFI_MAC_ADDR_LEN, mac_string_buf, sizeof(mac_string_buf)), raw->frame_length);
 
-		// k_sleep(K_SECONDS(0.01));
-		// LOG_HEXDUMP_INF(raw->data, sizeof(raw->data) - 128, "");  // Purposely printing less data to avoid messages dropped
-		// printk("\n\n");
-	}
+		k_sleep(K_SECONDS(0.01));
+		log_hexdump(raw->data, sizeof(raw->data));
+		printk("\n\n");
 
-	
+		int num_msg_in_pack = raw->data[odid_identifier_idx+7];
+		for (int h=0; h<num_msg_in_pack; h++) {
+			int msg_type = (raw->data[odid_identifier_idx + 8 + h*25] - 2) / 16;  // either 0 (Basic ID), 1 (Location/Vector), 2 (Authentication), 3 (Self-ID), 4 (System), or 5 (Operator ID)
+			
+			switch(msg_type) {  // Decode the raw data into useful RID information
+				case 0:  // Basic ID Message
+					break;
+				case 1:  // Location/Vector Message
+					break;
+				default:
+					break;
+			}
+			
+			printk("%d\n", msg_type);
+		}
+	}
 }
 
 static void handle_wifi_scan_done(struct net_mgmt_event_callback *cb)
