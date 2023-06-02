@@ -37,9 +37,12 @@ LOG_MODULE_REGISTER(scan, CONFIG_LOG_DEFAULT_LEVEL);
 // decimal of FA 0B BC 0D
 static uint8_t identifier[] = {250, 11, 188, 13};
 
-// array of ASCII chars, where their index in th array corresponds to its decimal representation.
-// note that the non-alphanumeric and non-null values are not needed and so are left as underscores.
-static char ASCII_DICTIONARY[] = {'0', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '_', '_', '_', '_', '_', '_', '_', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'};
+// array of ASCII chars, where their index in the array corresponds to its decimal representation.
+// note that the non-alphanumeric, non-period, and non-null values are not needed and so are left as underscores.
+static const char ASCII_DICTIONARY[] = {'0', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '.', '_', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '_', '_', '_', '_', '_', '_', '_', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'};
+// array of hex charx, where their index in the array corresponds to its decimal representation
+static const char* const HEX_DICTIONARY[] = {"00", "01", "02", "03", "04", "05", "06", "07", "08", "09", "0A", "0B", "0C", "0D", "0E", "0F", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "1A", "1B", "1C", "1D", "1E", "1F", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "2A", "2B", "2C", "2D", "2E", "2F", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "3A", "3B", "3C", "3D", "3E", "3F", "40", "41", "42", "43", "44", "45", "46", "47", "48", "49", "4A", "4B", "4C", "4D", "4E", "4F", "50", "51", "52", "53", "54", "55", "56", "57", "58", "59", "5A", "5B", "5C", "5D", "5E", "5F", "60", "61", "62", "63", "64", "65", "66", "67", "68", "69", "6A", "6B", "6C", "6D", "6E", "6F", "70", "71", "72", "73", "74", "75", "76", "77", "78", "79", "7A", "7B", "7C", "7D", "7E", "7F", "80", "81", "82", "83", "84", "85", "86", "87", "88", "89", "8A", "8B", "8C", "8D", "8E", "8F", "90", "91", "92", "93", "94", "95", "96", "97", "98", "99", "9A", "9B", "9C", "9D", "9E", "9F", "A0", "A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "AA", "AB", "AC", "AD", "AE", "AF", "B0", "B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B9", "BA", "BB", "BC", "BD", "BE", "BF", "C0", "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9", "CA", "CB", "CC", "CD", "CE", "CF", "D0", "D1", "D2", "D3", "D4", "D5", "D6", "D7", "D8", "D9", "DA", "DB", "DC", "DD", "DE", "DF", "E0", "E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8", "E9", "EA", "EB", "EC", "ED", "EE", "EF", "F0", "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "FA", "FB", "FC", "FD", "FE", "FF"};
+
 
 static uint32_t scan_finished;
 
@@ -271,8 +274,7 @@ static void handle_wifi_raw_scan_result(struct net_mgmt_event_callback *cb)
 
 	int odid_identifier_idx = contains(raw->data, sizeof(raw->data), identifier, sizeof(identifier));
 
-	// if (odid_identifier_idx != -1) {
-	if (rssi > -30) {
+	if (odid_identifier_idx != -1) {
 		LOG_INF("%-4u (%-6s) | %-4d | %s |      %-4d        ",
 			channel,
 			wifi_band_txt(band),
@@ -291,18 +293,51 @@ static void handle_wifi_raw_scan_result(struct net_mgmt_event_callback *cb)
 				case 0:  // Basic ID Message
 					enum UA_TYPE ua_type = raw->data[odid_identifier_idx + 8 + msg_num*25 + 1] % 16;
 					enum ID_TYPE id_type = raw->data[odid_identifier_idx + 8 + msg_num*25 + 1] / 16;  // floor division
-					
-					// Loop through the Serial number in the raw decimal data and build a new string containing the serial number in ASCII
-					char id_buf[21];  // initalize char array to hold the serial number (which is at most 20 ASCII chars)
-					for (int i=0; i<20; i++) {
-						int decimal_val = raw->data[odid_identifier_idx + 8 + msg_num*25 + 2+i];
-						id_buf[i] = ASCII_DICTIONARY[decimal_val];
-					}
-					id_buf[20] = "\0";
-					strcat(id_buf, "\0");  // add null terminator for printing
 					printf("\n\nID TYPE: %s.  ", ID_TYPE_STRING[id_type]);
 					printf("UA TYPE: %s.  ", UA_TYPE_STRING[ua_type]);
-					printf("SERIAL NUMBER/UAV ID: %s.\n\n", id_buf);
+
+					switch(id_type) {
+						// Using curly bracs around each case to define each case as it's own frame to prevent redeclaration errors for id_buf
+						case 0:{  // None --> null ID
+							char id_buf[] = {'0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '\0'};
+							break;
+						}
+						case 1:  // Serial Number
+						case 2:{  // CAA Registration
+							// Loop through the Serial number in the raw decimal data and build a new string containing the serial number in ASCII
+							char id_buf[21];  // initalize char array to hold the serial number (which is at most 20 ASCII chars)
+							for (int i=0; i<20; i++) {
+								int decimal_val = raw->data[odid_identifier_idx + 8 + msg_num*25 + 2+i];
+								id_buf[i] = ASCII_DICTIONARY[decimal_val];
+							}
+							id_buf[20] = '\0';
+							printf("SERIAL NUMBER/CAA REGISTRATION NUMBER: %s.\n\n", id_buf);
+							break;
+						}
+						case 3:{  // UTM UUID (should be encoded as a 128-bit UUID (32-char hex string))
+							char id_buf[33];
+							for (int i=0; i<32; i+=2) {
+								int decimal_val = raw->data[odid_identifier_idx + 8 + msg_num*25 + 2+i];
+								id_buf[i] = HEX_DICTIONARY[decimal_val][0];  // 1st hex char in an array of 2 hex chars
+								id_buf[i+1] = HEX_DICTIONARY[decimal_val][1];  // 2nd hex char in an array of 2 hex chars
+							}
+							id_buf[32] = '\0';
+							
+							break;
+						}							
+						case 4:{  // Specific Session ID (1st byte is an in betwen 0 and 255, and 19 remaining bytes are alphanumeric code, according to this: https://www.rfc-editor.org/rfc/rfc9153.pdf)
+							char* id_buf[21];  // initalize char array to hold the serial number (which is at most 20 ASCII chars)
+							sprintf(id_buf[0], "%d", raw->data[odid_identifier_idx + 8 + msg_num*25 + 2]);
+							// Loop through the Session ID in the raw decimal data and build a new string containing the serial number in ASCII
+							for (int i=1; i<20; i++) {
+								int decimal_val = raw->data[odid_identifier_idx + 8 + msg_num*25 + 2+i];
+								id_buf[i] = ASCII_DICTIONARY[decimal_val];
+							}
+							// printf("SPECIFIC SESSION ID: %s.\n\n", id_buf);
+							break;
+						}
+					}
+					break;
 				case 1:  // Location/Vector Message
 					enum OPERATIONAL_STATUS op_status = raw->data[odid_identifier_idx + 8 + msg_num*25 + 1] / 16;  // floor division
 					// funky modulos & floor division to get the value of each bit
@@ -345,6 +380,8 @@ static void handle_wifi_raw_scan_result(struct net_mgmt_event_callback *cb)
 					double timestamp = raw->data[odid_identifier_idx + 8 + msg_num*25 + 20];  // 1/10ths of seconds since the last hour relatve to UTC time
 
 					uint8_t timestamp_accuracy = raw->data[odid_identifier_idx + 8 + msg_num*25 + 22] * 0.1;  // between 0.1 s and 1.5 s (0 s = unknown)
+					
+					break;
 			}
 			
 			printk("%d\n", msg_type);
