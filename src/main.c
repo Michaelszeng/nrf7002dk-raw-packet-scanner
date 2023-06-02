@@ -37,19 +37,75 @@ LOG_MODULE_REGISTER(scan, CONFIG_LOG_DEFAULT_LEVEL);
 // decimal of FA 0B BC 0D
 static uint8_t identifier[] = {250, 11, 188, 13};
 
+// array of ASCII chars, where their index in th array corresponds to its decimal representation.
+// note that the non-alphanumeric and non-null values are not needed and so are left as underscores.
+static char ASCII_DICTIONARY[] = {'0', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '_', '_', '_', '_', '_', '_', '_', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'};
+
 static uint32_t scan_finished;
+
+enum ID_TYPE {
+	ID_NONE = 0, 
+	SERIAL_NUMBER_ANSI_CTA_2063_A = 1, 
+	CAA_ASSIGNED_REGISTRATION_ID = 2, 
+	UTM_ASSIGND_UUID = 3, 
+	SPECIFIC_SESSION_ID = 4
+};
+static const char* const ID_TYPE_STRING[] = {
+	[ID_NONE] = "ID_NONE",
+	[SERIAL_NUMBER_ANSI_CTA_2063_A] = "SERIAL_NUMBER_ANSI_CTA_2063_A",
+	[CAA_ASSIGNED_REGISTRATION_ID] = "CAA_ASSIGNED_REGISTRATION_ID",
+	[UTM_ASSIGND_UUID] = "UTM_ASSIGND_UUID",
+	[SPECIFIC_SESSION_ID] = "SPECIFIC_SESSION_ID"
+};
+
+enum UA_TYPE {
+	UA_NONE = 0, 
+	AEROPLANE = 1, 
+	HELICOPTER_MULTIROTOR = 2, 
+	GYROPLANE = 3, 
+	HYBRID_LIFT = 4, 
+	ORNITHOPTOR = 5, 
+	GLIDER = 6, 
+	KITE = 7, 
+	FREE_BALLOON = 8, 
+	CAPTIVE_BALLOON = 9, 
+	AIRSHIP = 10, 
+	FREE_FALL_PARACHUTE = 11, 
+	ROCKET = 12, 
+	TETHERED_POWERED_AIRCRAFT = 13, 
+	GROUND_OBSTACLE = 14, 
+	OTHER = 15
+};
+static const char* const UA_TYPE_STRING[] = {
+	[UA_NONE] = "UA_NONE",
+	[AEROPLANE] = "AEROPLANE",
+	[HELICOPTER_MULTIROTOR] = "HELICOPTER_MULTIROTOR",
+	[GYROPLANE] = "GYROPLANE",
+	[HYBRID_LIFT] = "HYBRID_LIFT",
+	[ORNITHOPTOR] = "ORNITHOPTOR",
+	[GLIDER] = "GLIDER",
+	[KITE] = "KITE",
+	[FREE_BALLOON] = "FREE_BALLOON",
+	[CAPTIVE_BALLOON] = "CAPTIVE_BALLOON",
+	[AIRSHIP] = "AIRSHIP",
+	[FREE_FALL_PARACHUTE] = "FREE_FALL_PARACHUTE",
+	[ROCKET] = "ROCKET",
+	[TETHERED_POWERED_AIRCRAFT] = "TETHERED_POWERED_AIRCRAFT",
+	[GROUND_OBSTACLE] = "GROUND_OBSTACLE",
+	[OTHER] = "OTHER"
+};
 
 static struct net_mgmt_event_callback wifi_shell_mgmt_cb;
 
-static void log_hexdump(uint8_t* hex_buf, uint16_t size) {
+static void log_hexdump(uint8_t* buf, uint16_t size) {
 	/*
 	 print the buffer (which should be a scanned wifi packet) as a string of hex chars.
 	 */
 	for (int i=0; i<size; i++) {
-		if (hex_buf[i] < 16) {  // because printing "%x ", for single digit characters omits the first 0
+		if (buf[i] < 16) {  // because printing "%x ", for single digit characters omits the first 0
 			printk("0");
 		}
-		printk("%X ", hex_buf[i]);
+		printk("%X ", buf[i]);
 		k_sleep(K_SECONDS(0.001));  // delay between each character so messages aren't dropped
 	}
 	printk("\n");
@@ -165,10 +221,21 @@ static void handle_wifi_raw_scan_result(struct net_mgmt_event_callback *cb)
 			
 			switch(msg_type) {  // Decode the raw data into useful RID information
 				case 0:  // Basic ID Message
-					break;
+					enum UA_TYPE ua_type = raw->data[odid_identifier_idx + 8 + h*25 + 1] % 16;
+					enum ID_TYPE id_type = raw->data[odid_identifier_idx + 8 + h*25 + 1] / 16;  // floor division
+					
+					// Loop through the Serial number in the raw decimal data and build a new string containing the serial number in ASCII
+					char id_buf[21];  // initalize char array to hold the serial number (which is at most 20 ASCII chars)
+					for (int i=0; i<20; i++) {
+						int decimal_val = raw->data[odid_identifier_idx + 8 + h*25 + 2+i];
+						id_buf[i] = ASCII_DICTIONARY[decimal_val];
+					}
+					id_buf[20] = "\0";
+					strcat(id_buf, "\0");  // add null terminator for printing
+					printf("\n\nID TYPE: %s.  ", ID_TYPE_STRING[id_type]);
+					printf("UA TYPE: %s.  ", UA_TYPE_STRING[ua_type]);
+					printf("SERIAL NUMBER/UAV ID: %s.\n\n", id_buf);
 				case 1:  // Location/Vector Message
-					break;
-				default:
 					break;
 			}
 			
