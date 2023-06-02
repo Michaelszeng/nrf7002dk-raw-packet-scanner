@@ -43,6 +43,8 @@ static char ASCII_DICTIONARY[] = {'0', '_', '_', '_', '_', '_', '_', '_', '_', '
 
 static uint32_t scan_finished;
 
+
+
 enum ID_TYPE {
 	ID_NONE = 0, 
 	SERIAL_NUMBER_ANSI_CTA_2063_A = 1, 
@@ -94,6 +96,71 @@ static const char* const UA_TYPE_STRING[] = {
 	[GROUND_OBSTACLE] = "GROUND_OBSTACLE",
 	[OTHER] = "OTHER"
 };
+
+enum OPERATIONAL_STATUS {
+	UNDECLARED = 0, 
+	GROUND = 1, 
+	AIRBORNE = 2, 
+	EMERGENCY = 3, 
+	REMOTE_ID_SYSTEM_FAILURE = 4
+};
+static const char* const OPERATIONAL_STATUS_STRING[] = {
+	[UNDECLARED] = "UNDECLARED",
+	[GROUND] = "GROUND",
+	[AIRBORNE] = "AIRBORNE",
+	[EMERGENCY] = "EMERGENCY",
+	[REMOTE_ID_SYSTEM_FAILURE] = "REMOTE_ID_SYSTEM_FAILURE"
+};
+
+
+enum HEIGHT_TYPE {
+	ABOVE_TAKEOFF = 0,
+	AGL = 1
+};
+static const char* const HEIGHT_TYPE_STRING[] = {
+	[ABOVE_TAKEOFF] = "ABOVE_TAKEOFF",
+	[AGL] = "AGL"  // Above Ground Level
+};
+
+enum E_W_DIRECTION_SEGMENT {
+	LESS_THAN_180 = 0,
+	GREATER_THAN_EQUAL_TO_180 = 1
+};
+static const char* const E_W_DIRECTION_SEGMENT_STRING[] = {
+	[LESS_THAN_180] = "<180",
+	[GREATER_THAN_EQUAL_TO_180] = ">=180"
+};
+
+enum SPEED_MULTIPLIER {
+	X_0_25 = 0,
+	X_0_75 = 1
+};
+static const char* const SPEED_MULTIPLIER_STRING[] = {
+	[X_0_25] = "0.25",
+	[X_0_75] = "0.75"
+};
+
+enum VERTICAL_HORIZONTAL_ACCURACY {
+	UNKNOWN_GREATER_THAN_150M = 0, 
+	LESS_THAN_150M = 1, 
+	LESS_THAN_45M = 2, 
+	LESS_THAN_25M = 3, 
+	LESS_THAN_10M = 4,
+	LESS_THAN_3M = 5,
+	LESS_THAN_1M = 6,
+};
+static const char* const VERTICAL_HORIZONTAL_ACCURACY_STRING[] = {
+	[UNKNOWN_GREATER_THAN_150M] = "UNKNOWN OR >=150 m",
+	[LESS_THAN_150M] = "<150 m",
+	[LESS_THAN_45M] = "<45 m",
+	[LESS_THAN_25M] = "<25 m",
+	[LESS_THAN_10M] = "<10 m",
+	[LESS_THAN_3M] = "<3 m",
+	[LESS_THAN_1M] = "<1 m"
+};
+
+
+
 
 static struct net_mgmt_event_callback wifi_shell_mgmt_cb;
 
@@ -204,7 +271,8 @@ static void handle_wifi_raw_scan_result(struct net_mgmt_event_callback *cb)
 
 	int odid_identifier_idx = contains(raw->data, sizeof(raw->data), identifier, sizeof(identifier));
 
-	if (odid_identifier_idx != -1) {
+	// if (odid_identifier_idx != -1) {
+	if (rssi > -30) {
 		LOG_INF("%-4u (%-6s) | %-4d | %s |      %-4d        ",
 			channel,
 			wifi_band_txt(band),
@@ -216,18 +284,18 @@ static void handle_wifi_raw_scan_result(struct net_mgmt_event_callback *cb)
 		printk("\n\n");
 
 		int num_msg_in_pack = raw->data[odid_identifier_idx+7];
-		for (int h=0; h<num_msg_in_pack; h++) {
-			int msg_type = (raw->data[odid_identifier_idx + 8 + h*25] - 2) / 16;  // either 0 (Basic ID), 1 (Location/Vector), 2 (Authentication), 3 (Self-ID), 4 (System), or 5 (Operator ID)
+		for (int msg_num=0; msg_num<num_msg_in_pack; msg_num++) {
+			int msg_type = (raw->data[odid_identifier_idx + 8 + msg_num*25] - 2) / 16;  // either 0 (Basic ID), 1 (Location/Vector), 2 (Authentication), 3 (Self-ID), 4 (System), or 5 (Operator ID)
 			
 			switch(msg_type) {  // Decode the raw data into useful RID information
 				case 0:  // Basic ID Message
-					enum UA_TYPE ua_type = raw->data[odid_identifier_idx + 8 + h*25 + 1] % 16;
-					enum ID_TYPE id_type = raw->data[odid_identifier_idx + 8 + h*25 + 1] / 16;  // floor division
+					enum UA_TYPE ua_type = raw->data[odid_identifier_idx + 8 + msg_num*25 + 1] % 16;
+					enum ID_TYPE id_type = raw->data[odid_identifier_idx + 8 + msg_num*25 + 1] / 16;  // floor division
 					
 					// Loop through the Serial number in the raw decimal data and build a new string containing the serial number in ASCII
 					char id_buf[21];  // initalize char array to hold the serial number (which is at most 20 ASCII chars)
 					for (int i=0; i<20; i++) {
-						int decimal_val = raw->data[odid_identifier_idx + 8 + h*25 + 2+i];
+						int decimal_val = raw->data[odid_identifier_idx + 8 + msg_num*25 + 2+i];
 						id_buf[i] = ASCII_DICTIONARY[decimal_val];
 					}
 					id_buf[20] = "\0";
@@ -236,7 +304,47 @@ static void handle_wifi_raw_scan_result(struct net_mgmt_event_callback *cb)
 					printf("UA TYPE: %s.  ", UA_TYPE_STRING[ua_type]);
 					printf("SERIAL NUMBER/UAV ID: %s.\n\n", id_buf);
 				case 1:  // Location/Vector Message
-					break;
+					enum OPERATIONAL_STATUS op_status = raw->data[odid_identifier_idx + 8 + msg_num*25 + 1] / 16;  // floor division
+					// funky modulos & floor division to get the value of each bit
+					enum HEIGHT_TYPE height_type_flag = (raw->data[odid_identifier_idx + 8 + msg_num*25 + 1] % 8) / 4;  // 0: Above Takeoff. 1: AGL
+					enum E_W_DIRECTION_SEGMENT direction_segment_flag = (raw->data[odid_identifier_idx + 8 + msg_num*25 + 1] % 4) / 2;  // 0: <180, 1: >=180
+					enum SPEED_MULTIPLIER speed_multiplier_flag = raw->data[odid_identifier_idx + 8 + msg_num*25 + 1] % 2;;  // 0: x0.25, 1: x0.75
+
+					uint8_t track_direction = raw->data[odid_identifier_idx + 8 + msg_num*25 + 2];  // direction measured clockwise from true north. Should be between 0-179
+					if (direction_segment_flag) {  // If E_W_DIRECTION_SEGMENT is true, add 180 to the track_direction, according to ASTM.
+						track_direction += 180;
+					}
+
+					uint8_t speed = raw->data[odid_identifier_idx + 8 + msg_num*25 + 3];  // ground speed in m/s
+					if (speed_multiplier_flag) {
+						speed = 0.75*speed + 255*0.25;  // as defined in ASTM
+					}
+					else {
+						speed *= 0.25;
+					}
+
+					int8_t vertical_speed = raw->data[odid_identifier_idx + 8 + msg_num*25 + 4] * 0.5;  // vertical speed in m/s (positive = up, negatve = down); multiply by 0.5 as defined in ASTM
+
+					// TODO: fix lat and lon
+					double lat = raw->data[odid_identifier_idx + 8 + msg_num*25 + 5];
+
+					double lon = raw->data[odid_identifier_idx + 8 + msg_num*25 + 9];
+
+					// TODO: fix altitudes
+					double pressure_altitude = (raw->data[odid_identifier_idx + 8 + msg_num*25 + 13] * 0.5) - 1000;
+
+					double geodetic_altitude = (raw->data[odid_identifier_idx + 8 + msg_num*25 + 15] * 0.5) - 1000;
+
+					// TODO: fix height
+					double height = (raw->data[odid_identifier_idx + 8 + msg_num*25 + 17] * 0.5) - 1000;
+
+					enum VERTICAL_HORIZONTAL_ACCURACY vertical_accuracy = raw->data[odid_identifier_idx + 8 + msg_num*25 + 19] / 16;  // floor division
+					enum VERTICAL_HORIZONTAL_ACCURACY horizontal_accuracy = raw->data[odid_identifier_idx + 8 + msg_num*25 + 19] % 16;
+
+					// TODO: fix timestamp
+					double timestamp = raw->data[odid_identifier_idx + 8 + msg_num*25 + 20];  // 1/10ths of seconds since the last hour relatve to UTC time
+
+					uint8_t timestamp_accuracy = raw->data[odid_identifier_idx + 8 + msg_num*25 + 22] * 0.1;  // between 0.1 s and 1.5 s (0 s = unknown)
 			}
 			
 			printk("%d\n", msg_type);
