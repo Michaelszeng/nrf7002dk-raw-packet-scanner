@@ -52,14 +52,14 @@ enum ID_TYPE {
 	ID_NONE = 0, 
 	SERIAL_NUMBER_ANSI_CTA_2063_A = 1, 
 	CAA_ASSIGNED_REGISTRATION_ID = 2, 
-	UTM_ASSIGND_UUID = 3, 
+	UTM_ASSIGNED_UUID = 3, 
 	SPECIFIC_SESSION_ID = 4
 };
 static const char* const ID_TYPE_STRING[] = {
 	[ID_NONE] = "ID_NONE",
 	[SERIAL_NUMBER_ANSI_CTA_2063_A] = "SERIAL_NUMBER_ANSI_CTA_2063_A",
 	[CAA_ASSIGNED_REGISTRATION_ID] = "CAA_ASSIGNED_REGISTRATION_ID",
-	[UTM_ASSIGND_UUID] = "UTM_ASSIGND_UUID",
+	[UTM_ASSIGNED_UUID] = "UTM_ASSIGNED_UUID",
 	[SPECIFIC_SESSION_ID] = "SPECIFIC_SESSION_ID"
 };
 
@@ -300,6 +300,7 @@ static void handle_wifi_raw_scan_result(struct net_mgmt_event_callback *cb)
 						// Using curly bracs around each case to define each case as it's own frame to prevent redeclaration errors for id_buf
 						case 0:{  // None --> null ID
 							char id_buf[] = {'0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '\0'};
+							printf("NULL UAV ID: %s.\n\n", id_buf);
 							break;
 						}
 						case 1:  // Serial Number
@@ -316,13 +317,13 @@ static void handle_wifi_raw_scan_result(struct net_mgmt_event_callback *cb)
 						}
 						case 3:{  // UTM UUID (should be encoded as a 128-bit UUID (32-char hex string))
 							char id_buf[33];
-							for (int i=0; i<32; i+=2) {
+							for (int i=0; i<32; i++) {
 								int decimal_val = raw->data[odid_identifier_idx + 8 + msg_num*25 + 2+i];
 								id_buf[i] = HEX_DICTIONARY[decimal_val][0];  // 1st hex char in an array of 2 hex chars
 								id_buf[i+1] = HEX_DICTIONARY[decimal_val][1];  // 2nd hex char in an array of 2 hex chars
 							}
 							id_buf[32] = '\0';
-							
+							printf("UTM UUID: %s.\n\n", id_buf);
 							break;
 						}							
 						case 4:{  // Specific Session ID (1st byte is an in betwen 0 and 255, and 19 remaining bytes are alphanumeric code, according to this: https://www.rfc-editor.org/rfc/rfc9153.pdf)
@@ -360,26 +361,43 @@ static void handle_wifi_raw_scan_result(struct net_mgmt_event_callback *cb)
 
 					int8_t vertical_speed = raw->data[odid_identifier_idx + 8 + msg_num*25 + 4] * 0.5;  // vertical speed in m/s (positive = up, negatve = down); multiply by 0.5 as defined in ASTM
 
-					// TODO: fix lat and lon
-					double lat = raw->data[odid_identifier_idx + 8 + msg_num*25 + 5];
+					// lat and lon Little Endian encoded
+					double lat_lsb = raw->data[odid_identifier_idx + 8 + msg_num*25 + 5];
+					double lat_lsb1 = raw->data[odid_identifier_idx + 8 + msg_num*25 + 6] * (1<<8);  // multiply by 2^8
+					double lat_msb1 = raw->data[odid_identifier_idx + 8 + msg_num*25 + 7] * (1<<16);  // multiply by 2^16
+					double lat_msb = raw->data[odid_identifier_idx + 8 + msg_num*25 + 8] * (1<<24);  // multiply by 2^24
+					double lat = lat_msb + lat_msb1 + lat_lsb1 + lat_lsb;
 
-					double lon = raw->data[odid_identifier_idx + 8 + msg_num*25 + 9];
+					double lon_lsb = raw->data[odid_identifier_idx + 8 + msg_num*25 + 9];
+					double lon_lsb1 = raw->data[odid_identifier_idx + 8 + msg_num*25 + 10] * (1<<8);  // multiply by 2^8
+					double lon_msb1 = raw->data[odid_identifier_idx + 8 + msg_num*25 + 11] * (1<<16);  // multiply by 2^16
+					double lon_msb = raw->data[odid_identifier_idx + 8 + msg_num*25 + 12] * (1<<24);  // multiply by 2^24
+					double lon = lon_msb + lon_msb1 + lon_lsb1 + lon_lsb / 10000000;  // divide by 10^7, according to ASTM
 
-					// TODO: fix altitudes
-					double pressure_altitude = (raw->data[odid_identifier_idx + 8 + msg_num*25 + 13] * 0.5) - 1000;
+					// altitudes and height Little Endian encoded
+					double pressure_altitude_lsb = raw->data[odid_identifier_idx + 8 + msg_num*25 + 13];
+					double pressure_altitude_msb = raw->data[odid_identifier_idx + 8 + msg_num*25 + 14] * (1<<8);
+					double pressure_altitude = (pressure_altitude_msb + pressure_altitude_lsb) * 0.5 - 1000;
 
-					double geodetic_altitude = (raw->data[odid_identifier_idx + 8 + msg_num*25 + 15] * 0.5) - 1000;
+					double geodetic_altitude_lsb = raw->data[odid_identifier_idx + 8 + msg_num*25 + 15];
+					double geodetic_altitude_msb = raw->data[odid_identifier_idx + 8 + msg_num*25 + 16] * (1<<8);
+					double geodetic_altitude = (pressure_altitude_msb + pressure_altitude_lsb) * 0.5 - 1000;
 
-					// TODO: fix height
-					double height = (raw->data[odid_identifier_idx + 8 + msg_num*25 + 17] * 0.5) - 1000;
+					double height_lsb = raw->data[odid_identifier_idx + 8 + msg_num*25 + 17];
+					double height_msb = raw->data[odid_identifier_idx + 8 + msg_num*25 + 18] * (1<<8);
+					double height = (pressure_altitude_msb + pressure_altitude_lsb) * 0.5 - 1000;
 
 					enum VERTICAL_HORIZONTAL_ACCURACY vertical_accuracy = raw->data[odid_identifier_idx + 8 + msg_num*25 + 19] / 16;  // floor division
 					enum VERTICAL_HORIZONTAL_ACCURACY horizontal_accuracy = raw->data[odid_identifier_idx + 8 + msg_num*25 + 19] % 16;
 
-					// TODO: fix timestamp
-					double timestamp = raw->data[odid_identifier_idx + 8 + msg_num*25 + 20];  // 1/10ths of seconds since the last hour relatve to UTC time
+					double baro_altitude = raw->data[odid_identifier_idx + 8 + msg_num*25 + 20];
 
-					uint8_t timestamp_accuracy = raw->data[odid_identifier_idx + 8 + msg_num*25 + 22] * 0.1;  // between 0.1 s and 1.5 s (0 s = unknown)
+					// 1/10ths of seconds since the last hour relatve to UTC time
+					double timestamp_lsb = raw->data[odid_identifier_idx + 8 + msg_num*25 + 21];
+					double timestamp_msb = raw->data[odid_identifier_idx + 8 + msg_num*25 + 21] * (1<<8);
+					double timestamp = timestamp_msb + timestamp_lsb;
+
+					uint8_t timestamp_accuracy = (raw->data[odid_identifier_idx + 8 + msg_num*25 + 22] % 15) * 0.1;  // modulo 15 to get rid of bits 7-4. Between 0.1 s and 1.5 s (0 s = unknown)
 					
 					break;
 			}
