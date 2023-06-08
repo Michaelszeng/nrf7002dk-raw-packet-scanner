@@ -162,6 +162,17 @@ static const char* const VERTICAL_HORIZONTAL_ACCURACY_STRING[] = {
 	[LESS_THAN_1M] = "<1 m"
 };
 
+enum SELF_ID_TYPE {
+	TEXT_DESCRIPTION = 0, 
+	EMERGENCY_DESCRIPTION = 1, 
+	EXTENDED_STATUS_DESCRIPTION = 2, 
+};
+static const char* const SELF_ID_TYPE_STRING[] = {
+	[TEXT_DESCRIPTION] = "TEXT_DESCRIPTION",
+	[EMERGENCY_DESCRIPTION] = "EMERGENCY_DESCRIPTION",
+	[EXTENDED_STATUS_DESCRIPTION] = "EXTENDED_STATUS_DESCRIPTION",
+};
+
 
 
 
@@ -400,15 +411,26 @@ static void handle_wifi_raw_scan_result(struct net_mgmt_event_callback *cb)
 					uint8_t timestamp_accuracy = (raw->data[odid_identifier_idx + 8 + msg_num*25 + 22] % 15) * 0.1;  // modulo 15 to get rid of bits 7-4. Between 0.1 s and 1.5 s (0 s = unknown)
 					
 					break;
+				case 3:  // Self ID Message
+					enum SELF_ID_TYPE self_id_type = raw->data[odid_identifier_idx + 8 + msg_num*25 + 1];
+					// Loop through the self id description in the raw decimal data and build a new string containing the self id description in ASCII
+					char self_id_description_buf[24];  // initalize char array to hold the serial number (which is at most 20 ASCII chars)
+					for (int i=0; i<23; i++) {
+						int decimal_val = raw->data[odid_identifier_idx + 8 + msg_num*25 + 2 + i];
+						self_id_description_buf[i] = ASCII_DICTIONARY[decimal_val];
+					}
+					self_id_description_buf[23] = '\0';
+					printf("SELF ID: %s.\n\n", self_id_description_buf);
+					break;
 				case 5:  // Operator ID Message
-					// Loop through the Serial number in the raw decimal data and build a new string containing the serial number in ASCII
-					char id_buf[21];  // initalize char array to hold the serial number (which is at most 20 ASCII chars)
+					// Loop through the operator id in the raw decimal data and build a new string containing the operator id in ASCII
+					char operator_id_buf[21];  // initalize char array to hold the serial number (which is at most 20 ASCII chars)
 					for (int i=0; i<20; i++) {
 						int decimal_val = raw->data[odid_identifier_idx + 8 + msg_num*25 + 2 + i];
-						id_buf[i] = ASCII_DICTIONARY[decimal_val];
+						operator_id_buf[i] = ASCII_DICTIONARY[decimal_val];
 					}
-					id_buf[20] = '\0';
-					printf("OPERATOR ID (CAA-issued License): %s.\n\n", id_buf);
+					operator_id_buf[20] = '\0';
+					printf("OPERATOR ID (CAA-issued License): %s.\n\n", operator_id_buf);
 					break;
 			}
 			
