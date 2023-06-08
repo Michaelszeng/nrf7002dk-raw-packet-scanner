@@ -26,6 +26,8 @@ LOG_MODULE_REGISTER(scan, CONFIG_LOG_DEFAULT_LEVEL);
 
 #include "net_private.h"
 
+#include "enums.h"
+
 #define WIFI_SHELL_MODULE "wifi"
 
 // #define WIFI_SHELL_MGMT_EVENTS (NET_EVENT_WIFI_SCAN_RESULT | NET_EVENT_WIFI_SCAN_DONE)
@@ -45,135 +47,6 @@ static const char* const HEX_DICTIONARY[] = {"00", "01", "02", "03", "04", "05",
 
 
 static uint32_t scan_finished;
-
-
-
-enum ID_TYPE {
-	ID_NONE = 0, 
-	SERIAL_NUMBER_ANSI_CTA_2063_A = 1, 
-	CAA_ASSIGNED_REGISTRATION_ID = 2, 
-	UTM_ASSIGNED_UUID = 3, 
-	SPECIFIC_SESSION_ID = 4
-};
-static const char* const ID_TYPE_STRING[] = {
-	[ID_NONE] = "ID_NONE",
-	[SERIAL_NUMBER_ANSI_CTA_2063_A] = "SERIAL_NUMBER_ANSI_CTA_2063_A",
-	[CAA_ASSIGNED_REGISTRATION_ID] = "CAA_ASSIGNED_REGISTRATION_ID",
-	[UTM_ASSIGNED_UUID] = "UTM_ASSIGNED_UUID",
-	[SPECIFIC_SESSION_ID] = "SPECIFIC_SESSION_ID"
-};
-
-enum UA_TYPE {
-	UA_NONE = 0, 
-	AEROPLANE = 1, 
-	HELICOPTER_MULTIROTOR = 2, 
-	GYROPLANE = 3, 
-	HYBRID_LIFT = 4, 
-	ORNITHOPTOR = 5, 
-	GLIDER = 6, 
-	KITE = 7, 
-	FREE_BALLOON = 8, 
-	CAPTIVE_BALLOON = 9, 
-	AIRSHIP = 10, 
-	FREE_FALL_PARACHUTE = 11, 
-	ROCKET = 12, 
-	TETHERED_POWERED_AIRCRAFT = 13, 
-	GROUND_OBSTACLE = 14, 
-	OTHER = 15
-};
-static const char* const UA_TYPE_STRING[] = {
-	[UA_NONE] = "UA_NONE",
-	[AEROPLANE] = "AEROPLANE",
-	[HELICOPTER_MULTIROTOR] = "HELICOPTER_MULTIROTOR",
-	[GYROPLANE] = "GYROPLANE",
-	[HYBRID_LIFT] = "HYBRID_LIFT",
-	[ORNITHOPTOR] = "ORNITHOPTOR",
-	[GLIDER] = "GLIDER",
-	[KITE] = "KITE",
-	[FREE_BALLOON] = "FREE_BALLOON",
-	[CAPTIVE_BALLOON] = "CAPTIVE_BALLOON",
-	[AIRSHIP] = "AIRSHIP",
-	[FREE_FALL_PARACHUTE] = "FREE_FALL_PARACHUTE",
-	[ROCKET] = "ROCKET",
-	[TETHERED_POWERED_AIRCRAFT] = "TETHERED_POWERED_AIRCRAFT",
-	[GROUND_OBSTACLE] = "GROUND_OBSTACLE",
-	[OTHER] = "OTHER"
-};
-
-enum OPERATIONAL_STATUS {
-	UNDECLARED = 0, 
-	GROUND = 1, 
-	AIRBORNE = 2, 
-	EMERGENCY = 3, 
-	REMOTE_ID_SYSTEM_FAILURE = 4
-};
-static const char* const OPERATIONAL_STATUS_STRING[] = {
-	[UNDECLARED] = "UNDECLARED",
-	[GROUND] = "GROUND",
-	[AIRBORNE] = "AIRBORNE",
-	[EMERGENCY] = "EMERGENCY",
-	[REMOTE_ID_SYSTEM_FAILURE] = "REMOTE_ID_SYSTEM_FAILURE"
-};
-
-
-enum HEIGHT_TYPE {
-	ABOVE_TAKEOFF = 0,
-	AGL = 1
-};
-static const char* const HEIGHT_TYPE_STRING[] = {
-	[ABOVE_TAKEOFF] = "ABOVE_TAKEOFF",
-	[AGL] = "AGL"  // Above Ground Level
-};
-
-enum E_W_DIRECTION_SEGMENT {
-	LESS_THAN_180 = 0,
-	GREATER_THAN_EQUAL_TO_180 = 1
-};
-static const char* const E_W_DIRECTION_SEGMENT_STRING[] = {
-	[LESS_THAN_180] = "<180",
-	[GREATER_THAN_EQUAL_TO_180] = ">=180"
-};
-
-enum SPEED_MULTIPLIER {
-	X_0_25 = 0,
-	X_0_75 = 1
-};
-static const char* const SPEED_MULTIPLIER_STRING[] = {
-	[X_0_25] = "0.25",
-	[X_0_75] = "0.75"
-};
-
-enum VERTICAL_HORIZONTAL_ACCURACY {
-	UNKNOWN_GREATER_THAN_150M = 0, 
-	LESS_THAN_150M = 1, 
-	LESS_THAN_45M = 2, 
-	LESS_THAN_25M = 3, 
-	LESS_THAN_10M = 4,
-	LESS_THAN_3M = 5,
-	LESS_THAN_1M = 6,
-};
-static const char* const VERTICAL_HORIZONTAL_ACCURACY_STRING[] = {
-	[UNKNOWN_GREATER_THAN_150M] = "UNKNOWN OR >=150 m",
-	[LESS_THAN_150M] = "<150 m",
-	[LESS_THAN_45M] = "<45 m",
-	[LESS_THAN_25M] = "<25 m",
-	[LESS_THAN_10M] = "<10 m",
-	[LESS_THAN_3M] = "<3 m",
-	[LESS_THAN_1M] = "<1 m"
-};
-
-enum SELF_ID_TYPE {
-	TEXT_DESCRIPTION = 0, 
-	EMERGENCY_DESCRIPTION = 1, 
-	EXTENDED_STATUS_DESCRIPTION = 2, 
-};
-static const char* const SELF_ID_TYPE_STRING[] = {
-	[TEXT_DESCRIPTION] = "TEXT_DESCRIPTION",
-	[EMERGENCY_DESCRIPTION] = "EMERGENCY_DESCRIPTION",
-	[EXTENDED_STATUS_DESCRIPTION] = "EXTENDED_STATUS_DESCRIPTION",
-};
-
-
 
 
 static struct net_mgmt_event_callback wifi_shell_mgmt_cb;
@@ -295,6 +168,14 @@ static void handle_wifi_raw_scan_result(struct net_mgmt_event_callback *cb)
 		k_sleep(K_SECONDS(0.01));
 		log_hexdump(raw->data, sizeof(raw->data));
 		printk("\n\n");
+		
+		// flags to hold whether or not a certain message was received
+		int basic_id_flag = 0;
+		int location_vector_flag = 0;
+		int authentication_flag = 0;
+		int self_id_flag = 0;
+		int system_flag = 0;
+		int operator_id_flag = 0;
 
 		int num_msg_in_pack = raw->data[odid_identifier_idx+7];
 		for (int msg_num=0; msg_num<num_msg_in_pack; msg_num++) {
@@ -349,6 +230,7 @@ static void handle_wifi_raw_scan_result(struct net_mgmt_event_callback *cb)
 							break;
 						}
 					}
+					basic_id_flag = 1;
 					break;
 				case 1:  // Location/Vector Message
 					enum OPERATIONAL_STATUS op_status = raw->data[odid_identifier_idx + 8 + msg_num*25 + 1] / 16;  // floor division
@@ -370,46 +252,67 @@ static void handle_wifi_raw_scan_result(struct net_mgmt_event_callback *cb)
 						speed *= 0.25;
 					}
 
-					int8_t vertical_speed = raw->data[odid_identifier_idx + 8 + msg_num*25 + 4] * 0.5;  // vertical speed in m/s (positive = up, negatve = down); multiply by 0.5 as defined in ASTM
+					double vertical_speed = raw->data[odid_identifier_idx + 8 + msg_num*25 + 4] * 0.5;  // vertical speed in m/s (positive = up, negatve = down); multiply by 0.5 as defined in ASTM
 
 					// lat and lon Little Endian encoded
-					double lat_lsb = raw->data[odid_identifier_idx + 8 + msg_num*25 + 5];
-					double lat_lsb1 = raw->data[odid_identifier_idx + 8 + msg_num*25 + 6] * (1<<8);  // multiply by 2^8
-					double lat_msb1 = raw->data[odid_identifier_idx + 8 + msg_num*25 + 7] * (1<<16);  // multiply by 2^16
-					double lat_msb = raw->data[odid_identifier_idx + 8 + msg_num*25 + 8] * (1<<24);  // multiply by 2^24
+					int32_t lat_lsb = raw->data[odid_identifier_idx + 8 + msg_num*25 + 5];
+					int32_t lat_lsb1 = raw->data[odid_identifier_idx + 8 + msg_num*25 + 6] * (1<<8);  // multiply by 2^8
+					int32_t lat_msb1 = raw->data[odid_identifier_idx + 8 + msg_num*25 + 7] * (1<<16);  // multiply by 2^16
+					int32_t lat_msb = raw->data[odid_identifier_idx + 8 + msg_num*25 + 8] * (1<<24);  // multiply by 2^24
 					double lat = lat_msb + lat_msb1 + lat_lsb1 + lat_lsb;
 
-					double lon_lsb = raw->data[odid_identifier_idx + 8 + msg_num*25 + 9];
-					double lon_lsb1 = raw->data[odid_identifier_idx + 8 + msg_num*25 + 10] * (1<<8);  // multiply by 2^8
-					double lon_msb1 = raw->data[odid_identifier_idx + 8 + msg_num*25 + 11] * (1<<16);  // multiply by 2^16
-					double lon_msb = raw->data[odid_identifier_idx + 8 + msg_num*25 + 12] * (1<<24);  // multiply by 2^24
+					int32_t lon_lsb = raw->data[odid_identifier_idx + 8 + msg_num*25 + 9];
+					int32_t lon_lsb1 = raw->data[odid_identifier_idx + 8 + msg_num*25 + 10] * (1<<8);  // multiply by 2^8
+					int32_t lon_msb1 = raw->data[odid_identifier_idx + 8 + msg_num*25 + 11] * (1<<16);  // multiply by 2^16
+					int32_t lon_msb = raw->data[odid_identifier_idx + 8 + msg_num*25 + 12] * (1<<24);  // multiply by 2^24
 					double lon = lon_msb + lon_msb1 + lon_lsb1 + lon_lsb / 10000000;  // divide by 10^7, according to ASTM
 
 					// altitudes and height Little Endian encoded
-					double pressure_altitude_lsb = raw->data[odid_identifier_idx + 8 + msg_num*25 + 13];
-					double pressure_altitude_msb = raw->data[odid_identifier_idx + 8 + msg_num*25 + 14] * (1<<8);
-					double pressure_altitude = (pressure_altitude_msb + pressure_altitude_lsb) * 0.5 - 1000;
+					uint16_t pressure_altitude_lsb = raw->data[odid_identifier_idx + 8 + msg_num*25 + 13];
+					uint16_t pressure_altitude_msb = raw->data[odid_identifier_idx + 8 + msg_num*25 + 14] * (1<<8);
+					uint16_t pressure_altitude = (pressure_altitude_msb + pressure_altitude_lsb) * 0.5 - 1000;
 
-					double geodetic_altitude_lsb = raw->data[odid_identifier_idx + 8 + msg_num*25 + 15];
-					double geodetic_altitude_msb = raw->data[odid_identifier_idx + 8 + msg_num*25 + 16] * (1<<8);
-					double geodetic_altitude = (pressure_altitude_msb + pressure_altitude_lsb) * 0.5 - 1000;
+					uint16_t geodetic_altitude_lsb = raw->data[odid_identifier_idx + 8 + msg_num*25 + 15];
+					uint16_t geodetic_altitude_msb = raw->data[odid_identifier_idx + 8 + msg_num*25 + 16] * (1<<8);
+					uint16_t geodetic_altitude = (pressure_altitude_msb + pressure_altitude_lsb) * 0.5 - 1000;
 
-					double height_lsb = raw->data[odid_identifier_idx + 8 + msg_num*25 + 17];
-					double height_msb = raw->data[odid_identifier_idx + 8 + msg_num*25 + 18] * (1<<8);
-					double height = (pressure_altitude_msb + pressure_altitude_lsb) * 0.5 - 1000;
+					uint16_t height_lsb = raw->data[odid_identifier_idx + 8 + msg_num*25 + 17];
+					uint16_t height_msb = raw->data[odid_identifier_idx + 8 + msg_num*25 + 18] * (1<<8);
+					uint16_t height = (pressure_altitude_msb + pressure_altitude_lsb) * 0.5 - 1000;
 
-					enum VERTICAL_HORIZONTAL_ACCURACY vertical_accuracy = raw->data[odid_identifier_idx + 8 + msg_num*25 + 19] / 16;  // floor division
-					enum VERTICAL_HORIZONTAL_ACCURACY horizontal_accuracy = raw->data[odid_identifier_idx + 8 + msg_num*25 + 19] % 16;
-
-					double baro_altitude = raw->data[odid_identifier_idx + 8 + msg_num*25 + 20];
+					enum VERTICAL_HORIZONTAL_BARO_ALT_ACCURACY vertical_accuracy = raw->data[odid_identifier_idx + 8 + msg_num*25 + 19] / 16;  // floor division
+					enum VERTICAL_HORIZONTAL_BARO_ALT_ACCURACY horizontal_accuracy = raw->data[odid_identifier_idx + 8 + msg_num*25 + 19] % 16;
+					
+					enum VERTICAL_HORIZONTAL_BARO_ALT_ACCURACY baro_alt_accuracy = raw->data[odid_identifier_idx + 8 + msg_num*25 + 20] / 16;  // floor division
+					enum SPEED_ACCURACY speed_accuracy = raw->data[odid_identifier_idx + 8 + msg_num*25 + 20] % 16;
 
 					// 1/10ths of seconds since the last hour relatve to UTC time
-					double timestamp_lsb = raw->data[odid_identifier_idx + 8 + msg_num*25 + 21];
-					double timestamp_msb = raw->data[odid_identifier_idx + 8 + msg_num*25 + 21] * (1<<8);
-					double timestamp = timestamp_msb + timestamp_lsb;
+					uint16_t timestamp_lsb = raw->data[odid_identifier_idx + 8 + msg_num*25 + 21];
+					uint16_t timestamp_msb = raw->data[odid_identifier_idx + 8 + msg_num*25 + 21] * (1<<8);
+					uint16_t timestamp = timestamp_msb + timestamp_lsb;
 
 					uint8_t timestamp_accuracy = (raw->data[odid_identifier_idx + 8 + msg_num*25 + 22] % 15) * 0.1;  // modulo 15 to get rid of bits 7-4. Between 0.1 s and 1.5 s (0 s = unknown)
 					
+					printf("OPERATIONAL STATUS: %s.  ", OPERATIONAL_STATUS_STRING[op_status]);
+					printf("HEIGHT TYPE: %s.  ", HEIGHT_TYPE_STRING[height_type_flag]);
+					printf("DIRECTION SEGMENT FLAG: %s.  ", E_W_DIRECTION_SEGMENT_STRING[direction_segment_flag]);
+					printf("SPEED MULTIPLIER FLAG: %s.  ", SPEED_MULTIPLIER_STRING[speed_multiplier_flag]);
+					printf("HEADING (deg): %d.  ", track_direction);
+					printf("SPEED (m/s): %f.  ", speed);
+					printf("VERTICAL SPEED (m/s): %f", vertical_speed);
+					printf("LAT: %f.  ", lat);
+					printf("LON: %f.  ", lon);
+					printf("PRESSURE ALT: %d.  ", pressure_altitude);
+					printf("GEO ALT: %d.  ", geodetic_altitude);
+					printf("HEIGHT: %d.  ", height);
+					printf("HORIZONTAL ACCURACY: %s.  ", VERTICAL_HORIZONTAL_BARO_ALT_ACCURACY_STRING[horizontal_accuracy]);
+					printf("VERTICAL ACCURACY: %s.  ", VERTICAL_HORIZONTAL_BARO_ALT_ACCURACY_STRING[vertical_accuracy]);
+					printf("BARO ALT ACCURACY: %s.  ", VERTICAL_HORIZONTAL_BARO_ALT_ACCURACY_STRING[baro_alt_accuracy]);
+					printf("SPEED ACCURACY: %s.  ", SPEED_ACCURACY_STRING[speed_accuracy]);
+					printf("TIMESTAMP: %d", timestamp);
+					printf("TIMESTAMP_ACCURACY (btwn 0.1-1.5s): %f\n\n", timestamp_accuracy);
+
+					location_vector_flag = 1;
 					break;
 				case 3:  // Self ID Message
 					enum SELF_ID_TYPE self_id_type = raw->data[odid_identifier_idx + 8 + msg_num*25 + 1];
@@ -421,6 +324,68 @@ static void handle_wifi_raw_scan_result(struct net_mgmt_event_callback *cb)
 					}
 					self_id_description_buf[23] = '\0';
 					printf("SELF ID: %s.\n\n", self_id_description_buf);
+					self_id_flag = 1;
+					break;
+				case 4:  // System Message
+					enum OPERATOR_LOCATION_ALTITUDE_SOURCE_TYPE operator_location_type = raw->data[odid_identifier_idx + 8 + msg_num*25 + 1] % 3; // mod 3 so that we only consider bits 1 and 0
+					
+					// lat and lon Little Endian encoded
+					int32_t operator_lat_lsb = raw->data[odid_identifier_idx + 8 + msg_num*25 + 2];
+					int32_t operator_lat_lsb1 = raw->data[odid_identifier_idx + 8 + msg_num*25 + 3] * (1<<8);  // multiply by 2^8
+					int32_t operator_lat_msb1 = raw->data[odid_identifier_idx + 8 + msg_num*25 + 4] * (1<<16);  // multiply by 2^16
+					int32_t operator_lat_msb = raw->data[odid_identifier_idx + 8 + msg_num*25 + 5] * (1<<24);  // multiply by 2^24
+					double operator_lat = lat_msb + lat_msb1 + lat_lsb1 + lat_lsb;
+
+					int32_t operator_lon_lsb = raw->data[odid_identifier_idx + 8 + msg_num*25 + 6];
+					int32_t operator_lon_lsb1 = raw->data[odid_identifier_idx + 8 + msg_num*25 + 7] * (1<<8);  // multiply by 2^8
+					int32_t operator_lon_msb1 = raw->data[odid_identifier_idx + 8 + msg_num*25 + 8] * (1<<16);  // multiply by 2^16
+					int32_t operator_lon_msb = raw->data[odid_identifier_idx + 8 + msg_num*25 + 9] * (1<<24);  // multiply by 2^24
+					double operator_lon = lon_msb + lon_msb1 + lon_lsb1 + lon_lsb / 10000000;  // divide by 10^7, according to ASTM
+
+					// number of aircraft in the area
+					uint16_t area_count_lsb = raw->data[odid_identifier_idx + 8 + msg_num*25 + 10];
+					uint16_t area_count_msb = raw->data[odid_identifier_idx + 8 + msg_num*25 + 11] * (1<<8);  // multiply by 2^8
+					uint16_t area_count = area_count_msb + area_count_lsb;
+
+					// radius of cylindrical area with the group of aircraft
+					uint16_t area_radius = raw->data[odid_identifier_idx + 8 + msg_num*25 + 12] * 10;
+
+					// floor and ceiling Little Endian encoded
+					uint16_t area_ceiling_lsb = raw->data[odid_identifier_idx + 8 + msg_num*25 + 13];
+					uint16_t area_ceiling_msb = raw->data[odid_identifier_idx + 8 + msg_num*25 + 14] * (1<<8);
+					uint16_t area_ceiling = (pressure_altitude_msb + pressure_altitude_lsb) * 0.5 - 1000;
+
+					uint16_t area_floor_lsb = raw->data[odid_identifier_idx + 8 + msg_num*25 + 15];
+					uint16_t area_floor_msb = raw->data[odid_identifier_idx + 8 + msg_num*25 + 16] * (1<<8);
+					uint16_t area_floor = (pressure_altitude_msb + pressure_altitude_lsb) * 0.5 - 1000;
+
+					enum UA_CATEGORY ua_category = raw->data[odid_identifier_idx + 8 + msg_num*25 + 17] / 16;  // floor division
+					if (ua_category == OPEN) {
+						enum UA_CLASS ua_classification = raw->data[odid_identifier_idx + 8 + msg_num*25 + 17] % 16;
+					}
+					else {
+						enum UA_CATEGORY ua_classification = 0;
+					}
+
+					// operator altitude Little Endian encoded
+					uint16_t operator_altitude_lsb = raw->data[odid_identifier_idx + 8 + msg_num*25 + 18];
+					uint16_t operator_altitude_msb = raw->data[odid_identifier_idx + 8 + msg_num*25 + 19] * (1<<8);
+					uint16_t operator_altitude = (pressure_altitude_msb + pressure_altitude_lsb) * 0.5 - 1000;
+
+					// skipping timestamp
+
+					printf("OPERATOR LOCATION SOURCE TYPE: %s.  ", OPERATOR_LOCATION_ALTITUDE_SOURCE_TYPE_STRING[operator_location_type]);
+					printf("OPERATOR LAT: %f.  ", operator_lat);
+					printf("OPERATOR LON: %f.  ", operator_lon);
+					printf("OPERATOR ALT: %d.  ", operator_altitude);
+					printf("AREA COUNT: %d.  ", area_count);
+					printf("AREA RADIUS: %d.  ", area_radius);
+					printf("AREA CEILING: %d.  ", area_ceiling);
+					printf("AREA FLOOR: %d.  ", area_floor);
+					printf("UA CATEGORY: %s.  ", UA_CATEGORY_STRING[ua_category]);
+					printf("UA CLASS: %s.\n\n", UA_CLASS_STRING[ua_class]);
+					
+					system_flag = 1;
 					break;
 				case 5:  // Operator ID Message
 					// Loop through the operator id in the raw decimal data and build a new string containing the operator id in ASCII
@@ -431,6 +396,8 @@ static void handle_wifi_raw_scan_result(struct net_mgmt_event_callback *cb)
 					}
 					operator_id_buf[20] = '\0';
 					printf("OPERATOR ID (CAA-issued License): %s.\n\n", operator_id_buf);
+
+					operator_id_flag = 1;
 					break;
 			}
 			
