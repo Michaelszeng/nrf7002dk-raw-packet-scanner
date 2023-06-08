@@ -360,11 +360,9 @@ static void handle_wifi_raw_scan_result(struct net_mgmt_event_callback *cb)
 					uint16_t area_floor = (pressure_altitude_msb + pressure_altitude_lsb) * 0.5 - 1000;
 
 					enum UA_CATEGORY ua_category = raw->data[odid_identifier_idx + 8 + msg_num*25 + 17] / 16;  // floor division
+					enum UA_CLASS ua_classification = 0;
 					if (ua_category == OPEN) {
 						enum UA_CLASS ua_classification = raw->data[odid_identifier_idx + 8 + msg_num*25 + 17] % 16;
-					}
-					else {
-						enum UA_CATEGORY ua_classification = 0;
 					}
 
 					// operator altitude Little Endian encoded
@@ -372,7 +370,12 @@ static void handle_wifi_raw_scan_result(struct net_mgmt_event_callback *cb)
 					uint16_t operator_altitude_msb = raw->data[odid_identifier_idx + 8 + msg_num*25 + 19] * (1<<8);
 					uint16_t operator_altitude = (pressure_altitude_msb + pressure_altitude_lsb) * 0.5 - 1000;
 
-					// skipping timestamp
+					// current time in seconds since 00:00:00 01/01/2019
+					uint32_t system_timestamp_lsb = raw->data[odid_identifier_idx + 8 + msg_num*25 + 20];
+					uint32_t system_timestamp_lsb1 = raw->data[odid_identifier_idx + 8 + msg_num*25 + 21] * (1<<8);
+					uint32_t system_timestamp_msb1 = raw->data[odid_identifier_idx + 8 + msg_num*25 + 22] * (1<<16);
+					uint32_t system_timestamp_msb = raw->data[odid_identifier_idx + 8 + msg_num*25 + 23] * (1<<24);
+					uint32_t system_timestamp = system_timestamp_msb + system_timestamp_msb1 + system_timestamp_lsb1 + system_timestamp_lsb;
 
 					printf("OPERATOR LOCATION SOURCE TYPE: %s.  ", OPERATOR_LOCATION_ALTITUDE_SOURCE_TYPE_STRING[operator_location_type]);
 					printf("OPERATOR LAT: %f.  ", operator_lat);
@@ -383,7 +386,8 @@ static void handle_wifi_raw_scan_result(struct net_mgmt_event_callback *cb)
 					printf("AREA CEILING: %d.  ", area_ceiling);
 					printf("AREA FLOOR: %d.  ", area_floor);
 					printf("UA CATEGORY: %s.  ", UA_CATEGORY_STRING[ua_category]);
-					printf("UA CLASS: %s.\n\n", UA_CLASS_STRING[ua_class]);
+					printf("UA CLASS: %s.  ", UA_CLASS_STRING[ua_classification]);
+					printf("TIMESTAMP (secs from 00:00:00 01/01/2019): %d.\n\n", system_timestamp);
 					
 					system_flag = 1;
 					break;
