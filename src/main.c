@@ -167,7 +167,7 @@ static void handle_wifi_raw_scan_result(struct net_mgmt_event_callback *cb)
 
 		k_sleep(K_SECONDS(0.01));
 		log_hexdump(raw->data, sizeof(raw->data));
-		printk("\n\n");
+		printf("\n\n\n");
 		
 		// flags to hold whether or not a certain message was received
 		int basic_id_flag = 0;
@@ -185,7 +185,7 @@ static void handle_wifi_raw_scan_result(struct net_mgmt_event_callback *cb)
 				case 0:  // Basic ID Message
 					enum UA_TYPE ua_type = raw->data[odid_identifier_idx + 8 + msg_num*25 + 1] % 16;
 					enum ID_TYPE id_type = raw->data[odid_identifier_idx + 8 + msg_num*25 + 1] / 16;  // floor division
-					printf("\n\nID TYPE: %s.  ", ID_TYPE_STRING[id_type]);
+					printf("ID TYPE: %s.  ", ID_TYPE_STRING[id_type]);
 					printf("UA TYPE: %s.  ", UA_TYPE_STRING[ua_type]);
 
 					switch(id_type) {
@@ -219,14 +219,16 @@ static void handle_wifi_raw_scan_result(struct net_mgmt_event_callback *cb)
 							break;
 						}							
 						case 4:{  // Specific Session ID (1st byte is an in betwen 0 and 255, and 19 remaining bytes are alphanumeric code, according to this: https://www.rfc-editor.org/rfc/rfc9153.pdf)
-							char* id_buf[21];  // initalize char array to hold the serial number (which is at most 20 ASCII chars)
-							sprintf(id_buf[0], "%d", raw->data[odid_identifier_idx + 8 + msg_num*25 + 2]);
+							char id_buf[21];
+							id_buf[0] = raw->data[odid_identifier_idx + 8 + msg_num*25 + 2];
+							// sprintf(id_buf[0], "%d", raw->data[odid_identifier_idx + 8 + msg_num*25 + 2]);
 							// Loop through the Session ID in the raw decimal data and build a new string containing the serial number in ASCII
 							for (int i=1; i<20; i++) {
 								int decimal_val = raw->data[odid_identifier_idx + 8 + msg_num*25 + 2+i];
 								id_buf[i] = ASCII_DICTIONARY[decimal_val];
 							}
-							// printf("SPECIFIC SESSION ID: %s.\n\n", id_buf);
+							id_buf[20] = '\0';
+							printf("SPECIFIC SESSION ID: %s.\n\n", id_buf);
 							break;
 						}
 					}
@@ -320,12 +322,14 @@ static void handle_wifi_raw_scan_result(struct net_mgmt_event_callback *cb)
 				case 3:  // Self ID Message
 					enum SELF_ID_TYPE self_id_type = raw->data[odid_identifier_idx + 8 + msg_num*25 + 1];
 					// Loop through the self id description in the raw decimal data and build a new string containing the self id description in ASCII
-					char self_id_description_buf[24];  // initalize char array to hold the serial number (which is at most 20 ASCII chars)
+					char self_id_description_buf[24];  // initalize char array to hold self id description
 					for (int i=0; i<23; i++) {
 						int decimal_val = raw->data[odid_identifier_idx + 8 + msg_num*25 + 2 + i];
 						self_id_description_buf[i] = ASCII_DICTIONARY[decimal_val];
 					}
 					self_id_description_buf[23] = '\0';
+					
+					printf("SELF ID TYPE: %s.  ", SELF_ID_TYPE_STRING[self_id_type]);
 					printf("SELF ID: %s.\n\n", self_id_description_buf);
 					self_id_flag = 1;
 					break;
@@ -365,10 +369,8 @@ static void handle_wifi_raw_scan_result(struct net_mgmt_event_callback *cb)
 					uint16_t area_floor = (area_floor_msb + area_floor_lsb) * 0.5 - 1000;
 
 					enum UA_CATEGORY ua_category = raw->data[odid_identifier_idx + 8 + msg_num*25 + 17] / 16;  // floor division
-					enum UA_CLASS ua_classification = 0;
-					if (ua_category == OPEN) {
-						enum UA_CLASS ua_classification = raw->data[odid_identifier_idx + 8 + msg_num*25 + 17] % 16;
-					}
+					enum UA_CLASS ua_classification = raw->data[odid_identifier_idx + 8 + msg_num*25 + 17] % 16;
+					
 
 					// operator altitude Little Endian encoded
 					uint16_t operator_altitude_lsb = raw->data[odid_identifier_idx + 8 + msg_num*25 + 18];
@@ -398,7 +400,7 @@ static void handle_wifi_raw_scan_result(struct net_mgmt_event_callback *cb)
 					break;
 				case 5:  // Operator ID Message
 					// Loop through the operator id in the raw decimal data and build a new string containing the operator id in ASCII
-					char operator_id_buf[21];  // initalize char array to hold the serial number (which is at most 20 ASCII chars)
+					char operator_id_buf[21];  // initalize char array to hold the operator id string (which is at most 20 ASCII chars)
 					for (int i=0; i<20; i++) {
 						int decimal_val = raw->data[odid_identifier_idx + 8 + msg_num*25 + 2 + i];
 						operator_id_buf[i] = ASCII_DICTIONARY[decimal_val];
@@ -409,8 +411,6 @@ static void handle_wifi_raw_scan_result(struct net_mgmt_event_callback *cb)
 					operator_id_flag = 1;
 					break;
 			}
-			
-			printk("%d\n", msg_type);
 		}
 	}
 }
